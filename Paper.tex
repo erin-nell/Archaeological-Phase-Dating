@@ -1,0 +1,469 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{mathrsfs}
+\usepackage{booktabs}
+\usepackage{appendix}
+
+
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  language=R,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{green},
+  stringstyle=\color{red},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  numbersep=10pt,
+  backgroundcolor=\color{white},
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  frame=single,
+  tabsize=2,
+  captionpos=b,
+  breaklines=true,
+  breakatwhitespace=false,
+  escapeinside={\%*}{*)}
+}
+
+\title{A Statistical Approach to Dating Archaeological Phases}
+\author{Erin Nell}
+\date{April 2025}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper revisits the challenge of dating phases of ceramic artifacts by employing statistical modeling to address uncertainties in radiocarbon dating. It explores a statistical approach to dating archaeological phases, as presented in the 1988 paper "An Archaeological Inference Problem", which uses radiocarbon data from 65 artifacts associated with four distinct ceramic phases.
+
+The methodology involves constructing a likelihood function that integrates the probability of observed radiocarbon dates given a uniform distribution of calendar dates within each phase and piecewise linear calibration curve to relate radiocarbon dates to calendar years. To overcome limitations of Maximum Likelihood Estimation (MLE) encountered in the original work, a Bayesian approach is implemented to infer the start and end dates of the ceramic phases. This paper presents a modern implementation of the statistical approach using R and MLE estimates to infer phase boundary dates. The results obtained from both the Bayesian analysis and MLE are compared. 
+
+%The findings offer a data-driven perspective and demonstrate the importance of statistical modeling in refining archaeological dating.
+
+
+
+\end{abstract}
+
+\noindent
+\textbf{Keywords:} Bayesian inference, radiocarbon dating, posterior distribution, calibration curve, maximum likelihood estimation, chronological modeling.
+
+\section{Introduction}
+Understanding the chronology of archaeological sites is crucial for reconstructing past societies, yet establishing precise dates for cultural phases remains a challenge. The paper, ``An Archaeological Inference Problem'' \cite{thepaper} by Naylor and Smith, explores how mathematical modeling can be used to estimate the start and end dates of ceramic phases at Danebury, an Iron Age hill fort in England.
+
+Traditional dating techniques often struggle with uncertainties arising from radiocarbon calibration. By applying statistical models, this study aims to address these uncertainties, generating probability distributions for phase transitions rather than relying on single-point estimates.
+
+It will introduce the statistical framework used to model the ceramic phases, discussing the use of radiocarbon data and the methods used to account for measurement error and the non-linear relationship between radiocarbon years and calendar years through a calibration curve. Furthermore, the paper will present a modern implementation of this statistical approach using the R programming language, contrasting it with the original methodology which relies on posterior distributions to establish phase boundaries. Finally, the results obtained from both Bayesian inference and MLE estimates will be compared and discussed, highlighting the insights gained into the chronology of Danebury's ceramic phases and the broader implications of statistical modeling for archaeological dating.
+
+\section{Background}
+\subsection{Archaeological Context}
+This study focuses on excavations from the Danebury Iron Age hill fort in southern England. To determine the ceramic phases, archaeologists analyzed 51 samples of wood charcoal, 9 samples of grain, and 10 samples of animal bone. However, 5 samples were rejected for being ''contaminated'' \cite{thepaper}. Each sample was accordingly dated and associated with a pottery shard excavated from the same location. With assumed certainty, the archaeologists have assigned the ceramic pieces to Ceramic Phases 1-4, seen in Table 1, recorded as years before the present. These phases are considered to be ''abutting nonoverlapping periods of stylistically consistent production'' \cite{thepaper}. The focus is on figuring out five specific dates ($\alpha_1, \alpha_2, ..., \alpha_5$) that mark the start and end of these periods. For example, $\alpha_1$ is the start of Phase 1, $\alpha_2$ is the end of Phase 1 and the start of Phase 2.
+\begin{table}[h]
+    \centering
+    \renewcommand{\arraystretch}{1.2} % Adjust row spacing
+    \setlength{\tabcolsep}{10pt} % Adjust column spacing
+    \caption{\textit{Ceramic Phase Data}}
+    \footnotesize
+    \begin{tabular}{c c c c}
+        \hline
+        \multicolumn{4}{c}{\textbf{Ceramic Phase 1 (11 observations)}} \\
+        \hline
+        $2,530 \pm 110$ & $2,370 \pm 80$  & $2,460 \pm 60$  & $2,420 \pm 80$  \\
+        $2,440 \pm 70$  & $2,210 \pm 60$  & $2,160 \pm 80$  & $2,330 \pm 60$  \\
+        $2,450 \pm 80$  & $2,770 \pm 70$  & $2,300 \pm 100$ & \\
+        \hline
+        \multicolumn{4}{c}{\textbf{Ceramic Phase 2 (9 observations)}} \\
+        \hline
+        $2,290 \pm 60$  & $2,270 \pm 90$  & $2,120 \pm 70$  & $2,330 \pm 90$  \\
+        $2,140 \pm 80$  & $2,580 \pm 80$  & $2,340 \pm 100$ & $2,300 \pm 90$  \\
+        $2,180 \pm 90$  & \\
+        \hline
+        \multicolumn{4}{c}{\textbf{Ceramic Phase 3 (17 observations)}} \\
+        \hline
+        $2,230 \pm 70$  & $2,210 \pm 70$  & $2,090 \pm 90$  & $2,060 \pm 80$  \\
+        $2,090 \pm 70$  & $2,110 \pm 70$  & $2,210 \pm 70$  & $2,210 \pm 70$  \\
+        $2,250 \pm 70$  & $2,120 \pm 80$  & $2,470 \pm 90$  & $2,280 \pm 70$  \\
+        $2,380 \pm 90$  & $2,520 \pm 80$  & $2,300 \pm 70$  & $2,220 \pm 90$  \\
+        $2,330 \pm 70$  & \\
+        \hline
+        \multicolumn{4}{c}{\textbf{Ceramic Phase 4 (23 observations)}} \\
+        \hline
+        $2,140 \pm 80$  & $2,160 \pm 70$  & $1,980 \pm 80$  & $2,030 \pm 70$  \\
+        $2,200 \pm 80$  & $2,260 \pm 80$  & $2,100 \pm 90$  & $2,300 \pm 70$  \\
+        $2,090 \pm 60$  & $2,110 \pm 80$  & $2,060 \pm 70$  & $2,120 \pm 70$  \\
+        $2,060 \pm 60$  & $2,170 \pm 70$  & $2,000 \pm 70$  & $1,990 \pm 70$  \\
+        $2,370 \pm 70$  & $2,130 \pm 60$  & $2,170 \pm 70$  & $2,120 \pm 70$  \\
+        $1,900 \pm 60$  & $2,040 \pm 70$  & $2,150 \pm 70$  & \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{Challenges of Radiocarbon Dating}
+
+A challenge in our chronological analysis stems from the overlap in radiocarbon dates across different ceramic phases. As modeled in the Figure 1, the boundaries between the ceramic phases, based on the ceramic phase data are not sharply defined and dramatically overlap. The primary goal of the statistical modeling is to resolve this overlap and generate clear start and end dates between the phases.
+
+Radiocarbon dating, which is the measure of remaining $^{14}C$ (carbon-14) in an organism, is a fundamental tool in creating archaeological chronologies. However, several challenges arise when using radiocarbon dates to establish calendar-year estimates for artifacts. As atmospheric $^{14}C$ levels fluctuate over time, radiocarbon years do not directly correspond to calendar years \cite{radiocarbon}. This requires calibration with samples with known ages, such as tree rings.
+
+\vspace{-.25ex}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=.90\textwidth]{Density.png}
+    \caption{Radiocarbon date data from Table 1 plotted as density distributions. The overlapping densities highlights the difficulty in establishing precise phase boundaries without statistical modeling.}
+\end{figure}
+\vspace{-1.5ex} 
+
+\subsection{Calibration Curve}
+Accurately transforming radiocarbon dates into calendar dates is crucial to establish reliable chronologies. To achieve this, we use a calibration curve based on dendrochronology, or tree ring dating. Researchers constructed a calibration curve by analyzing $^{14}C$ in tree rings, leveraging the known relationship between radiocarbon dates and calendar years within those samples. This established relationship is then used to estimate calendar dates for ceramic samples with unknown relationships.
+
+This paper uses the calibration proposed by Clark (1975) to establish the relationship between radiocarbon and calendar dates \cite{clark1975}. In Figure 2, the calibration curve is not a simple linear relationship and will thus need to be modeled using a piecewise linear function.
+
+\vspace{-.25ex}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=.5\textwidth]{ClarkLineDots.png}
+    \caption{Calibration curve proposed by Clark (1975) compared to the identity line $(y=x)$. The non-linear relationship between radiocarbon and calendar dates demonstrates that radiocarbon dating is not a one-to-one mapping.}
+\end{figure}
+%\vspace{-1.5ex}
+
+\section{Basics of the Model}
+The mathematical model used in this study is designed to estimate the start and end dates of ceramic phases at Danebury by incorporating radiocarbon dating data. Since radiocarbon dates do not directly correspond to calendar years, the model must account for uncertainties in the dating process while providing a structured framework for interpreting the archaeological evidence.
+
+Overall, the model is a probabilistic approach that treats the start and end dates of ceramic phases as unknown parameters to be estimated. The four ceramic phases are assumed to correspond to the intervals $(\alpha_j, \alpha_{j+1}]$, where $(j=1,...,4)$:
+
+\begin{equation*}
+    \alpha^T = (\alpha_1, \alpha_2, \alpha_3, \alpha_4, \alpha_5), \quad \alpha_1>\alpha_2>\alpha_3>\alpha_4>\alpha_5.
+\end{equation*}
+We let $\theta$ denote the actual historical date of when the artifact was created in years before present (BP) and lies within its assigned ceramic phase, $j$.
+\begin{equation*}
+    p(\theta |j,\alpha) = p(\theta|\alpha_j, \alpha_{j+1}), \quad \alpha_j > \theta \ge \alpha_{j+1}.
+\end{equation*}
+%%%%%%%%%%%%%%%%%%%%%%% MAYBE WANT TO EDIT THIS BELOW,
+Thus, the conditional probability of \(\theta\), given phase \(j\) and its boundaries \(\alpha\), is equal to the probability of \(\theta\) being between \(\alpha_j\) and \(\alpha_{j+1}\).
+
+\section{Modeling Data Uncertainty}
+\subsection{Normal Distribution -- Modeling Radiocarbon Dates}
+
+To account for measurement error of radiocarbon dates, we model the measured radiocarbon date, as following a normal distribution. A normal distribution is a probability distribution with a bell-shaped curve symmetric about the mean $\mu$ \cite{normaldistribution}. This means that values near the mean occur more frequently than values further from the mean.
+
+By assuming that radiocarbon dates follow a normal distribution centered around the measured radiocarbon date, $x$, with a given standard deviation, $s$, the model accounts for the measurement error:
+
+\begin{equation}
+    p(x|\mu, s)=\frac{1}{\sqrt{2\pi }s}\exp(-\frac{(x-\mu)^2}{2s^2}).
+\end{equation}
+This model describes the likelihood of observing a radiocarbon date $x$ given the true radiocarbon date and the standard deviation $s$.
+
+\subsection{Uniform Distribution -- Modeling Calendar Dates}
+Within each ceramic phase, we assume that the true calendar date of an artifact is equally likely to be any date within that phase. We model the actual calendar dates, $\theta$ as uniformly distributed, where uniform distribution is defined as a probability distribution where all values within a given interval are equally likely. It had a constant probability across its range:
+
+\begin{equation}
+        p(\theta|\alpha_j,\alpha_{j+1})=\frac{1}{\alpha_j-\alpha_{j+1}}, \quad \text{if  } \alpha_j\ge\theta>\alpha_{j+1}.
+\end{equation}
+This accounts for the uncertainty in assigning specific dates to artifacts within phases, since we do not have precise knowledge of when, within a given phase, an artifact originated.
+
+\section{Calibration Curve Implementation}
+We adopt a piecewise linear function to represent the calibration curve $\mu(\theta)$, defined across $K+1$ selected knots, $ \{(t_k, m_k), k=0,1,...,K\}$
+The knots are breakpoints that delineate the piecewise function, marking the transition between different linear segments. Each knot is defined by a calendar year $t_k$ and its corresponding radiocarbon year $m_k$, where $m_k = \mu(t_k)$. The relationship within each interval is expressed as:
+\begin{equation*}
+    \mu(\theta) = a_k+b_k\theta, \quad t_{k-1}<\theta\leq, \quad k=1,...,K
+\end{equation*}
+where $a_k$ represents the intercept and $b_k$ the slope of the linear segment:
+\begin{equation*}
+    a_k = m_k-b_kt_k, \quad b_k = \frac{m_k-m_{k-1}}{t_k-t_{k-1}}, \quad b_k\neq 0.
+\end{equation*}
+As illustrated in Figure 2, this approach allows us to approximate a complex, non-linear calibration curve by breaking it up into a series of linear segments, enabling the conversion of radiocarbon dates into calendar dates.
+
+\section{The Likelihood Function}
+With the calibration curve and probability distributions established, the next step is to formulate a likelihood function that reflects the probability of observing a specific radiocarbon date, $x$, given a ceramic phase, $j$. The likelihood is computationally expressed as:
+\begin{equation*}
+        p(x|s,j,\alpha) = \int_{\alpha_{j+1}}^{\alpha_j} p(x|\mu(\theta),s)p(\theta|\alpha_j,\alpha_{j+1})d\theta.
+\end{equation*}
+By integrating the product of the normal and uniform distribution over the range of possible calendar dates $\theta$ within the given ceramic phase $[\alpha_{j+1}, \alpha_j]$, we combine all the possible uncertainties. 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Building the Log-Likelihood Function}
+As previously established, each radiocarbon observation, $x_i$, is associated with a measurement error $s_i$ and a phase index $j_i$, which identifies the ceramic phase in which the observation belongs. The corresponding calendar date $\theta$ for $x_i$ is assumed to fall within the interval $(\alpha_{j_i+1}, \alpha_{j_i}]$.
+
+Evaluating the likelihood for each observation necessitates integrating over the possible calendar dates within the phase boundaries. However, the  nonlinear calibration curve $\mu(\theta)$ made directly computing this integral challenging given the computational limitations in the 1980s. The authors addressed this by approximating the integral using a piecewise linear function. This workaround involved identifying the relevant segments of the calibration curve for each phase by selecting two indices, $l_1(j)$ and $l_2(j)$, such that:
+\[
+t_{l_1(j)-1} < \alpha_{j+1} \le t_{l_1(j)} < \cdots < t_{l_2(j)} \le \alpha_j < t_{l_2(j)+1}.
+\]
+These indices specify the portion of the calibration curve that corresponds to the calendar interval for the given ceramic phase. By carefully choosing $l_1(j)$ and $l_2(j)$, we ensure that the integration is performed accurately over the relevant sections of the curve.
+
+\subsection{Piecewise Linear Approximation}
+To overcome difficulty with integration over the complex calibration curve, it is approximated as piecewise linear over small intervals between knots. Specifically, within each segment $(t_{k-1}, t_k]$, the calibration curve is approximated by:
+\[
+\mu(\theta) \approx a_k + b_k \theta,
+\]
+where $a_k$ and $b_k$ are the respective slope and intercept for each segment.
+
+Under this piecewise linear approximation, the likelihood function for a single observation becomes a sum over the relevant segments:
+\[
+p(x_i|s_i,j_i,\alpha) = \frac{1}{\alpha_{j_i} - \alpha_{j_i+1}} \sum_{k=l_1(j_i)}^{l_2(j_i)+1} I_k,
+\]
+where each $I_k$ is the integral over a small linear piece:
+\[
+I_k = \int_{d_{k-1}}^{d_k} p(x_i | a_k + b_k \theta, s_i) \, d\theta.
+\]
+
+By approximating the calibration curve in this way, the problem of integrating over a complex nonlinear function is reduced to summing simpler integrals over linear segments. This approach provides a computationally efficient solution given the limited computing resources available when this paper was written.
+
+\subsection{The Log-Likelihood Function}
+Once the likelihoods for individual observations are approximated, the overall likelihood for the entire dataset, assuming independent observations, is the product of the individual likelihoods:
+\[
+L(x; \alpha) = \prod_{i=1}^n p(x_i \mid s_i, j_i, \alpha).
+\]
+To simplify numerical optimization, the log-likelihood is used instead, converting the product into a sum:
+\[
+\log L(x;\alpha) = \sum_{i=1}^n \log p(x_i \mid s_i, j_i, \alpha).
+\]
+Maximizing this log-likelihood function with respect to $\alpha$ results in estimates for the phase boundary dates that best fit the observed radiocarbon data under the model.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Bayesian Analysis and Posterior Inference}
+
+Given the challenges encountered with the MLE, particularly the frequent convergence to different local maxima and the instability of standard error estimates, the authors used a Bayesian framework to infer the ceramic phase boundaries.
+
+The posterior density $p(\alpha \mid x)$ represents the probability distribution of the unknown parameters $\alpha$ given the observed data $x$. Moreover, the posterior distribution combines prior information about the parameters with the likelihood of the observed data via Bayes' theorem:
+\[
+p(\alpha \mid x) = \frac{p(x \mid \alpha) p(\alpha)}{p(x)},
+\]
+where:
+\begin{itemize}
+    \item $p(x \mid \alpha)$ is the likelihood function, representing the probability of the observed data given the parameters,
+    \item $p(\alpha)$ is the prior density, reflecting prior beliefs about the parameters,
+    \item $p(x)$ is the marginal likelihood (a normalizing constant ensuring that the posterior density integrates to one) \cite{bayes}.
+\end{itemize}
+
+Since the likelihood function is expressed in terms of the log-likelihood $L(x;\alpha)$, it appears as an exponential in the posterior equation:
+\[
+p({\alpha} \mid x) = \frac{e^{L(x;\alpha)} p(\alpha)}{p(x)}.
+\]
+Notably, the authors use a weak (improper) prior, defined as: 
+\[
+p(\alpha) = 
+\begin{cases}
+1, & \alpha_1 > \alpha_2 > \dots > \alpha_5 > 0 \\
+0, & \text{otherwise}
+\end{cases}
+\]
+
+This prior enforces the chronological ordering of the phase boundaries and does not provide any specific information about their actual values. As a result, the prior does not heavily influence the final estimates of the phase boundaries and instead, the observed data primarily shapes the posterior distribution. This approach is well-suited to the data but may lead to less stable posterior estimates if the data are noisy or sparse.
+
+%This structure highlights the connection between the maximization of the log-likelihood and the peak of the posterior distribution under a flat prior.
+
+From the posterior density, the authors computed statistical summaries, known as posterior moments:
+\begin{itemize}
+    \item \textbf{Posterior means} for each phase boundary $\alpha_j$, providing the expected value of the parameter given the observed data.
+    \item \textbf{Posterior standard deviations} and associated intervals, offering a measure of uncertainty around each estimated boundary.
+\end{itemize}
+See Table \ref{tab:posterior_means} for the authors' results.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Modern Implementation Using R}
+Building upon the statistical framework described earlier, this section presents our modern implementation of the log-likelihood model using the R programming language. The code for this implementation can be found in the Appendix.
+\subsection{Interpolation with Knots}
+To implement the calibration curve, we defined a piecewise linear function $\mu(\theta)$ that returns the expected radiocarbon age for a given calendar year $\theta$. The calibration curve is divided into linear segments between specified knot points $t_k$, and within each segment, $\mu(\theta)$ is given by:
+\begin{align*}
+\mu(\theta) &= a_k + b_k \theta, &\quad & t_{k-1} < \theta \leq t_k, \quad k = 1, \dots, K, \\
+           &= a_1 + b_1 \theta, &\quad & \theta \leq t_0, \\
+           &= a_K + b_K \theta, &\quad & \theta > t_K,
+\end{align*}
+where $a_k$ and $b_k$ are the intercept and slope parameters for each segment \cite{thepaper}. 
+
+Boundary conditions are applied to handle dates earlier than the first knot or later than the last, by extending the first or last line segment accordingly. This interpolation approach ensures a continuous calibration curve across the entire range of calendar dates without introducing artificial discontinuities.
+
+\subsection{Likelihood Calculation for a Single Observation}
+Unlike the 1988 paper, which approximates the integral over phase intervals using a piecewise linear summation, our implementation evaluates the likelihood integral directly. Specifically, for a radiocarbon observation $x$ with standard deviation $s$, the likelihood of $x$ given a phase bounded by $\alpha_j$ and $\alpha_{j+1}$ is:
+\[
+\mathcal{L}(x \mid s, \alpha_j, \alpha_{j+1}) = \int_{\alpha_j}^{\alpha_{j+1}} f(x \mid \mu(\theta), s) f(\theta \mid \alpha_j, \alpha_{j+1}) \, d\theta,
+\]
+which implements the normal density function (1) centered at $\mu(\theta)$, and the uniform density (2) over the phase interval.
+This approach makes full use of the calibration curve, rather than a piecewise approximation.
+
+\subsection{Likelihood Calculation for All Observations in a Phase}
+Assuming independence across observations, the total likelihood for all radiocarbon dates within a phase is computed by taking the product of individual likelihoods, or equivalently, the sum of their log-likelihoods:
+\[
+L(x; \alpha) = \sum_{i=1}^n \log p(x_i \mid s_i, j_i, \alpha),
+\]
+where $x = \{x_1, \dots, x_n\}$ are the observed radiocarbon dates, and each $j_i$ specifies the phase to which $x_i$ belongs.
+
+In our parameterization, we do not estimate every phase boundary directly. Instead, we estimate the start of the most recent phase, $\alpha_1$, and then the lengths of the phases that come before it.  For instance, the start of phase 3 is $\alpha_1 + \text{len}_4$, and the start of phase 2 is $\alpha_1 + \text{len}_4 + \text{len}_3$, and so on. This cumulative structure enforces non-overlapping phases and simplifies the optimization problem.
+
+
+\subsection{Maximum Likelihood Estimation}
+To estimate the phase boundaries, we employ Maximum Likelihood Estimation. Starting from initial parameter guesses, we try many values of $\alpha_1$, $\text{len}_4$, $\text{len}_3$, etc., starting from our initial guesses. We then compute the total likelihood for each parameter combination by summing log-likelihoods across all observations, and finally identify the combination that minimizes the negative log-likelihood.
+
+This method results in the most probable calendar intervals for each phase, as seen in Table \ref{tab:mle_means}, based on the observed radiocarbon data and the calibration curve. As we did not encounter any of the same complications that the authors outlined in the 1988 paper when calculating the MLE, we determined that our results were sufficient and did not necessitate the calculation of posterior moments.
+
+
+\section{Results} 
+To evaluate the estimation of phase boundaries, we compare the results from two approaches: Bayesian posterior inference and MLE.
+
+Posterior inference and MLE offer different perspectives on the phase boundary estimations. MLE provides a single point estimate that maximizes the likelihood of the observed data, offering a straightforward summary of the most likely values. In contrast, Bayesian posterior inference yields a full probability distribution over the parameters, capturing the uncertainty and potential correlations between phase boundaries. Although neither approach is necessarily superior, the additional statistics provided by the posterior can be valuable.
+
+The Bayesian posterior means and the MLE estimate, seen in Table \ref{tab:posterior_means} and Table \ref{tab:mle_means} respectively, generally agree in their overall ordering and approximate values, although there are notable differences, particularly for $\alpha_1$ and $\alpha_3$ which differ by almost 100 years. Moreover, the results highlight how short these phases can be, with the time between the start and end of Phase 3 only spans 51 years in the MLE results. Similarly, the Bayesian analysis produced equally short phases, with the start and end of Phase 2 spanning 50 years. 
+
+When comparing results, the phase boundaries obtained from our analysis align more intuitively with expectations based on the radiocarbon data. For example, as seen in Figure \ref{fig:density_results}, the results for $\alpha_1$ obtained via Bayesian analysis cuts off the tail of the distribution, whereas our estimated boundary appears to better capture the spread of the data in that region. There results for $\alpha_4$ are also interesting, appearing to extend beyond the primary density concentration of Phase 3. Intuitively, one might expect this boundary to align more closely with the region where the density distributions of Phase 3 and Phase 4 converge. 
+
+Moreover, it is important to acknowledge other potential sources of uncertainty not considered within this statistical approach. For instance, the relatively limited size of the radiocarbon dataset (n=65) could potentially influence the accuracy and reliability of the chronological estimates. While sufficient for the statistical models applied, a larger sample size could potentially lead to more precise and robust estimates of the phase boundaries, particularly for the earlier phases.
+
+Furthermore, the analysis relies on the initial assignment of individual pottery fragments to specific ceramic phases by archaeologists. This step, while based on stylistic and contextual analysis, is subject to interpretation and potential error. The boundaries between ceramic phases are not always sharply defined in the archaeological record, and the subjective nature of classification could introduce another layer of uncertainty in statistical modeling. Future analysis might explore methods to incorporate this uncertainty in phase assignments directly into the statistical analysis, potentially through probabilistic modeling of artifact classification.
+
+While this study offers a statistically rigorous approach to dating the Danebury ceramic phases, acknowledging the limitations of the dataset size and the reliance on archaeological phase classifications highlights avenues for future research. Addressing these uncertainties could lead to even more comprehensive understanding of the site's chronology and Iron Age civilizations in this region.
+
+
+
+\begin{table}[h!]
+    \centering
+    \caption{Bayesian Analysis of Phase Boundaries }
+    \label{tab:posterior_means}
+    \begin{tabular}{lccccc}
+    %\toprule
+    & $\alpha_1$ & $\alpha_2$ & $\alpha_3$ & $\alpha_4$ & $\alpha_5$ \\
+    \midrule
+    Posterior Mean & 2500 & 2390 & 2340 & 2270 & 1920 \\
+    Posterior Standard Deviations & 70 & 30 & 40 & 40 & 70 \\
+    %\bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[h!]
+    \centering
+    \caption{MLE of Phase Boundaries}
+    \label{tab:mle_means}
+    \begin{tabular}{lccccc}
+    %\toprule
+    & $\alpha_1$ & $\alpha_2$ & $\alpha_3$ & $\alpha_4$ & $\alpha_5$ \\
+    \midrule
+    MLE Mean & 2609 & 2388 & 2251 & 2200 & 1900 \\
+   % \bottomrule
+    \end{tabular}
+\end{table}
+
+
+%\vspace{-.25ex}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=.9\textwidth]{DensityResults2.png}
+    \caption{Phase Densities and Boundary Results}
+    \label{fig:density_results} 
+\end{figure}
+%\vspace{-1.5ex} 
+
+%\vspace{-.25ex}
+%\begin{figure}[h!]
+   % \centering
+  %  \includegraphics[width=.9\textwidth]{boxplot.png}
+ %   \caption{caption}
+%\end{figure}
+%\vspace{-1.5ex} 
+
+% appendix for extra code
+\section*{Appendix: R Code for Phase Analysis}
+The following R code was used to perform the phase analysis for the ceramic data presented in this paper. This code includes the data preparation, the definition of the piecewise linear function for the calibration curve, the likelihood function, and the maximum likelihood estimation. The results obtained from this analysis are discussed in Section 9.
+
+\begin{lstlisting}
+phase1 <- data.frame(
+  x = c(2530, 2420, 2160, 2770, 2370, 2440, 2330, 2300, 2460, 2210, 2450),
+  s = c(110, 80, 80, 70, 80, 70, 60, 100, 60, 60, 80)
+)
+
+phase2 <- data.frame(
+  x = c(2290, 2330, 2340, 2270, 2140, 2300, 2120, 2580, 2180),
+  s = c(60, 90, 100, 90, 80, 90, 70, 80, 90)
+)
+
+phase3 <- data.frame(
+  x = c(2230, 2060, 2210, 2120, 2210, 2470, 2520, 2220, 2210, 2090, 2090, 2210, 2250, 2280, 2300, 2330, 2110),
+  s = c(70, 80, 70, 80, 70, 90, 80, 70, 70, 90, 70, 70, 70, 80, 70, 70, 70)
+)
+
+phase4 <- data.frame(
+  x = c(2140, 2030, 2100, 2110, 2060, 1990, 2170, 2040, 2160, 2200, 2300, 2060, 2170, 2370, 2120, 2150, 1980, 2260, 2090, 2120, 2000, 2130, 1900),
+  s = c(80, 80, 90, 80, 60, 70, 70, 70, 70, 80, 70, 70, 70, 70, 70, 70, 80, 80, 60, 70, 70, 60, 60)
+)
+
+calibration_data <- data.frame(
+  calendar = c(1735, 1765, 1830, 1890, 1950, 2045, 2110, 2155, 2165, 2175, 2270, 2285, 2190, 2250, 2305, 2230, 2315, 2320, 2350, 2375, 2400, 2440, 2480, 2550, 2705, 2750, 2790, 2830, 2875, 2925, 2980, 3050, 3125, 2510, 2530, 2565, 2575, 2620, 2655, 2585, 2605, 2665, 2680),
+  radiocarbon = c(1800, 1850, 1900, 1950, 2000, 2050, 2100, 2150, 2160, 2170, 2170, 2170, 2180, 2180, 2180, 2190, 2190, 2200, 2250, 2300, 2350, 2400, 2420, 2450, 2500, 2550, 2600, 2650, 2700, 2750, 2800, 2850, 2900, 2430, 2440, 2460, 2465, 2465, 2465, 2470, 2470, 2470, 2480)
+) calibration_data <- calibration_data[order(calibration_data$calendar), ]
+
+mu_theta <- function(theta) {
+  knots.cal <- calibration_data$calendar
+  values.cal <- calibration_data$radiocarbon
+  
+  k_map=function(theta){
+  if (theta <= min(knots.cal)) {
+    k <- which.min(knots.cal) 
+  } else if (theta >= max(knots.cal)) {
+    k <- which.max(knots.cal)
+  } else {
+    k <- max(which(knots.cal <= theta))
+  }
+  
+  t_k <- knots.cal[k]
+  t_k1 <- knots.cal[k + 1]
+  m_k <- values.cal[k]
+  m_k1 <- values.cal[k + 1]
+  
+  b_k <- (m_k1 - m_k) / (t_k1 - t_k)
+  a_k <- m_k - b_k * t_k
+  
+  res=a_k + b_k * theta
+  return(res)
+  }
+  sapply(theta,k_map)
+}
+
+likelihood_x <- function(x, s, alpha_j, alpha_j1) {
+  val=x
+  std=s
+  lb=alpha_j
+  ub=alpha_j1
+  
+  p_theta <- function(theta,val.=val,std.=std,lb.=lb,ub.=ub) {
+    mu <- mu_theta(theta)
+    p_x_given_mu_s = dnorm(val.,mean=mu,sd=std.)
+    p_theta_given_alpha <- dunif(x=theta, min=lb., max=ub.)
+    return(p_x_given_mu_s * p_theta_given_alpha)
+  }
+  integrate(p_theta, lower = lb, upper = ub, val=val,std=std)$value
+}
+
+negll=function(alpha_1,len_4,len_3,len_2,len_1) {
+  l4=mapply(likelihood_x, phase4$x, phase4$s, MoreArgs = list(alpha_j = alpha_1, alpha_j1 = alpha_1+len_4))
+  l3=mapply(likelihood_x, phase3$x, phase3$s, MoreArgs = list(alpha_j = alpha_1+len_4, alpha_j1 = alpha_1+len_4+len_3))
+  l2=mapply(likelihood_x, phase2$x, phase2$s, MoreArgs = list(alpha_j = alpha_1+len_4+len_3, alpha_j1 = alpha_1+len_4+len_3+len_2))
+  l1=mapply(likelihood_x, phase1$x, phase1$s, MoreArgs = list(alpha_j = alpha_1+len_4+len_3+len_2, alpha_j1 = alpha_1+len_4+len_3+len_2+len_1))
+  -(sum(log(l4))+sum(log(l3))+sum(log(l2))+sum(log(l1)))
+}
+
+mle_joint=mle(negll, start=list(alpha_1=1850,len_4=200,len_3=200,len_2=200,len_1=200), lower=c(1800,0,0,0,0), upper=c(1900,300,300,300,300))
+
+mle.pars=mle_joint@details$par
+alphavec=cumsum(mle.pars)
+names(alphavec)=c("alpha_1","alpha_2","alpha_3","alpha_4","alpha_5")
+\end{lstlisting}
+
+\section*{Acknowledgments}
+The author would like to sincerely thank Professor Michelle Lacey for their guidance, feedback, and encouragement throughout this project. Her expertise and support were crucial to the completion of this paper.
+
+
+
+
+
+
+
+
+\bibliographystyle{plain}
+\bibliography{mybib}
+
+\end{document}
